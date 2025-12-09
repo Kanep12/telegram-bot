@@ -2,11 +2,23 @@ import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
+# BOT TOKEN tuleb Railway environment variablist "TOKEN"
 TOKEN = os.getenv("TOKEN")
-LINK = "https://example.com"
+
+# Sinu grupi link
+GROUP_LINK = "https://t.me/+tZVb6VQnMrk4MGQ0"
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Siin on su link: {LINK}")
+    caption = (
+        "Welcome to DoggieMarket! 🐶🛒\n\n"
+        f"Join here: {GROUP_LINK}"
+    )
+
+    # Saadame pildi failist doggie.jpg
+    with open("doggie.jpg", "rb") as photo:
+        await update.message.reply_photo(photo=photo, caption=caption)
+
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
