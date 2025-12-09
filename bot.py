@@ -6,20 +6,29 @@ from telegram.ext import (
     MessageHandler,
     CallbackQueryHandler,
     ContextTypes,
+    ChatMemberHandler,
     filters
 )
 
-# BOT TOKEN keskkonnamuutujast
 TOKEN = os.getenv("TOKEN")
 
-# ADMIN USER ID (SINA)
-ADMIN_ID = 7936569231 
+ADMIN_ID = 7936569231
 
-# Salvestame admini saadetud sõnumi, mida hiljem gruppi saata
 pending_messages = {}
+known_groups = {}  # salvestame grupid siia
+
 
 # -----------------------------
-#  Sinu VANA KOOD - ALLES JÄETUD
+#  SALVESTA GRUPP, KUS BOT NÄEB UPDATE'I
+# -----------------------------
+async def track_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type in ["group", "supergroup"]:
+        known_groups[chat.id] = chat.title
+
+
+# -----------------------------
+#  SINU VANA /start (alles jäetud)
 # -----------------------------
 GROUP_LINK = "https://t.me/+tZVb6VQnMrk4MGQ0"
 
@@ -29,81 +38,73 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Join here: {GROUP_LINK}"
     )
 
-    # saadame pildi failist
     with open("doggie.jpg", "rb") as photo:
         await update.message.reply_photo(photo=photo, caption=caption)
 
 
-
 # -----------------------------
-#   UUS FUNKTSIOON: ADMIN saadab sõnumi → bot küsib gruppi
+#  ADMIN SAADAB SÕNUMI → BOT ANNAB GRUPPIDE MENÜÜ
 # -----------------------------
 async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
 
-    # Ainult sina saad seda funktsiooni kasutada
     if user_id != ADMIN_ID:
-        return  # ignoreerib teisi
+        return  # ignore other people
 
     text = update.message.text
     pending_messages[user_id] = text
 
-    # leiame grupid, kus bot sees on
-    chats = context.application.chat_data
-    keyboard = []
+    if not known_groups:
+        return await update.message.reply_text("Bot ei tea veel ühtegi gruppi. Kirjuta gruppides midagi, kus bot sees on.")
 
-    for chat_id, data in chats.items():
-        title = data.get("title")
-        # ainult grupid (-100...)
-        if title and str(chat_id).startswith("-100"):
-            keyboard.append(
-                [InlineKeyboardButton(title, callback_data=f"send|{chat_id}")]
-            )
+    keyboard = [
+        [InlineKeyboardButton(title, callback_data=f"send|{chat_id}")]
+        for chat_id, title in known_groups.items()
+    ]
 
-    if not keyboard:
-        return await update.message.reply_text("Bot ei ole üheski grupis.")
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Vali grupp, kuhu see sõnum saata:", reply_markup=reply_markup)
-
+    await update.message.reply_text(
+        "Vali grupp, kuhu see sõnum saata:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 
 # -----------------------------
-#  Kui admin valib grupi nupu
+#  CALLBACK: ADMIN VALIB GRUPI
 # -----------------------------
 async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    user_id = query.from_user.id
-    if user_id != ADMIN_ID:
+    if query.from_user.id != ADMIN_ID:
         return await query.edit_message_text("Sul pole luba seda kasutada.")
 
     data = query.data
+
     if data.startswith("send|"):
         chat_id = int(data.split("|")[1])
-        msg = pending_messages.get(user_id)
+        msg = pending_messages.get(ADMIN_ID)
 
         if not msg:
             return await query.edit_message_text("Pole sõnumit, mida saata.")
 
-        # saadame sõnumi gruppi
         await context.bot.send_message(chat_id=chat_id, text=msg)
 
-        await query.edit_message_text("Sõnum saadetud gruppi!")
-        pending_messages.pop(user_id, None)
-
+        await query.edit_message_text("Sõnum saadetud!")
+        pending_messages.pop(ADMIN_ID, None)
 
 
 # -----------------------------
-#  BOTI KÄIVITAMINE
+#  BOTI KÄIVITUS
 # -----------------------------
 app = ApplicationBuilder().token(TOKEN).build()
 
-# vana kood
+# jälgi gruppe (kõik sõnumid gruppidest)
+app.add_handler(MessageHandler(filters.ALL, track_groups))
+
+# sinu vana /start
 app.add_handler(CommandHandler("start", start))
 
-# uus admin-sõnumite funktsioon
+# admini sõnumid
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_message))
 
 # inline menüü
